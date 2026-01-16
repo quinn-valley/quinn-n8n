@@ -25,7 +25,10 @@ networks:
 
 x-shared: &shared
   restart: always
-  image: docker.n8n.io/n8nio/n8n
+  # build:
+  #   context: .
+  #   dockerfile: Dockerfile
+  image: n8nio/n8n:${N8N_VERSION:-stable}
   environment:
     - DB_TYPE=postgresdb
     - DB_POSTGRESDB_HOST=postgres
@@ -47,12 +50,20 @@ x-shared: &shared
     - N8N_EDITOR_BASE_URL=${N8N_EDITOR_BASE_URL}
     - WEBHOOK_URL=${N8N_WEBHOOK_URL}
     - GENERIC_TIMEZONE=Asia/Bangkok
-
+    - NODE_FUNCTION_ALLOW_BUILTIN=*
+    - NODE_FUNCTION_ALLOW_EXTERNAL=@napi-rs/canvas,n8n-nodes-postiz
+    - N8N_REINSTALL_MISSING_PACKAGES=true
+    - N8N_RUNNERS_ENABLED=true
+    - N8N_RUNNERS_MODE=external
+    - N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0
+    - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN}
+    - N8N_NATIVE_PYTHON_RUNNER=true
   links:
     - postgres
     - redis
   volumes:
     - n8n_storage:/home/node/.n8n
+    - /Users/jarupongbestt/Library/Fonts/:/usr/share/fonts/truetype/host/
   depends_on:
     redis:
       condition: service_healthy
@@ -68,7 +79,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
     volumes:
-      - n8n_pg_data:/var/lib/postgresql/data
+      - n8n_pg_data:/var/lib/postgresql
       - ./init-data.sh:/docker-entrypoint-initdb.d/init-data.sh
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -h localhost -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
@@ -82,7 +93,6 @@ services:
       cloudflared-network:
         aliases:
           - n8n_postgres
-
   redis:
     image: redis:8-alpine
     restart: always
@@ -127,6 +137,24 @@ services:
       resources:
         limits:
           memory: 2G
+    networks:
+      default:
+      cloudflared-network:
+        aliases:
+          - n8n-worker
     depends_on:
       n8n:
         condition: service_healthy
+  
+  n8n-runners:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - N8N_RUNNERS_TASK_BROKER_URI=http://n8n:5679
+      - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN}
+    volumes:
+      - /Users/jarupongbestt/Library/Fonts/:/usr/share/fonts/truetype/host/
+    depends_on:
+      - n8n
+    
